@@ -1,0 +1,115 @@
+---
+title: "Data simulation"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+## Defining variables
+
+First lets define 'independent' variables that are drawn from a distribution rather than from the model.\  
+In this particular case, these variables are the ones that, given our DAG, do not have arrows coming into them (i.e. those variables that are not influenced by the model).\  
+
+
+
+```{r}
+set.seed(62)
+n=5000
+age = round(rnorm(n, mean =50, sd = 13),1)
+immigrant = rbinom(n, 1, .15)
+race = sample(c(rep('white',times = n *.7),rep('black', times = n*.2), rep('other',times=n*.1)))
+```
+
+Of note we established that, most likely the immigrant variable would be influenced by the ethnicity variable. And we can figure out a way to draw samples given ethnicity. However, for the first part of the exmample and for simplicity we will just create a binomial variable for immigrant.\  
+
+## The model 
+
+Given the following DAG we established our data generation rule using an example f how Maria would create these data on STATA:
+
+`generate mean_education = 12 - .1*age +2.5(age<50) * immigrant + (age>=50*immigrant) - black*immigrant - 1.5*other`
+
+![Data generating model](initial model simple.jpg)
+
+
+Now, the way I 'relaxed' the problem was to brake down each one of the variables and then putting them back on to the model so it can be translated to other software languages.
+
+```{r}
+x0 = 12
+
+x1 = -.1*age
+
+#I am not 100% sure about these but the syntax says: 
+#If a person is younger than 50, multiply 2.5*immigrant status, else assign 0 (i.e. This coefficient doesn't count)
+x2 = ifelse(age<50,2.5*immigrant,0) 
+
+#If a person is 50 or older, just use immigrant status, else assign 0 (i.e. This coefficient doesn't count)                                    
+x3 = ifelse(age>=50, immigrant, 0)  
+
+#If a person's race is black assign a -1 else assign 0 (i.e. This coefficient doesn't count)     
+x4 = ifelse(race=="black",-1,0)
+
+#If a person's race is other assign a -1.5 else assign 0 (i.e. This coefficient doesn't count)    
+x5 = ifelse(race=="other",-1.5,0)
+
+
+mean_education = mean_education = x0 + x1 + x2 +x3 + x4 + x5
+
+```
+
+
+Alernaively we can code it as:
+
+```{R}
+mean_educ2 = 12 - (.1*age) + (age<50)*2.5*immigrant - (age>=50)*immigrant - 1*(race=='black') - 1.5*(race=="other")
+```
+
+Now we asssign a random term to education and combine it with the mean education
+
+```{r}
+random_education = rnorm(n)*3
+
+education = mean_education + random_education
+```
+
+
+Since we established a rule for age where there is a cutoff we need to create a variable that reflects this cutoff (i.e making age binary)
+
+```{r}
+bin_age = as.numeric(age < 50)
+```
+
+To make easy reading the code we can put all these on a data frame
+
+```{r}
+data = data.frame(age,
+                  immigrant,
+                  race,
+                  mean_education,
+                  mean_educ2,
+                  education,
+                  bin_age,
+                  x0,x1,x2,x3,x4,x5)
+```
+\  
+\  
+
+
+   Here we see tha both ways of coding mean education give the same answer
+
+```{r}
+head(data,20)
+```
+
+
+
+Let's check the model!
+
+```{r}
+
+model_1 = lm(education ~age + immigrant + as.factor(race) + (bin_age*immigrant))
+
+summary(model_1)
+```
+
+
